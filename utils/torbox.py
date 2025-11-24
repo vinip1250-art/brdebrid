@@ -1,81 +1,72 @@
 import httpx
+import json
 
 BASE_URL = "https://api.torbox.app/v1"
 
-# A função de extração de hash foi removida. O magnet é usado como string completa.
 async def resolve_torbox(magnet, api_key):
-    async with httpx.AsyncClient() as client:
+    """Resolve um magnet link para uma URL HTTP direta usando a API do Torbox."""
+    async with httpx.AsyncClient(timeout=20.0) as client: # Aumentei o timeout para 20s
         headers = {"Authorization": f"Bearer {api_key}"}
 
+        # 1. Criar/Verificar Torrent (Isso no Torbox checa o cache automaticamente)
         try:
-            # 1. Criar Torrent (Verifica cache). Payload com a URL Magnet completa.
+            print(f"DEBUS TORBOX MAGNET: Enviando payload. Magnet: {magnet[:50]}...")
             payload = {"magnet": magnet, "seed": 1, "allow_zip": False}
             
-            # --- CORREÇÃO CRÍTICA: USAR 'data=' AO INVÉS DE 'json=' ---
-            # O Torbox rejeita o formato JSON e exige form-data.
-            print(f"DEBUG TORBOX MAGNET: Enviando payload como form-data. Magnet: {magnet[:50]}...") 
+            # Torbox API usa token no corpo para /createtorrent
+            payload["token"] = api_key 
             
-            create_resp = await client.post(
-                f"{BASE_URL}/api/torrents/createtorrent", 
-                data=payload, # <--- AQUI ESTÁ A CORREÇÃO
-                headers=headers, 
-                timeout=10
-            )
-            
-            # --- TRATAMENTO DO ERRO 400 ---
-            if create_resp.status_code == 400:
-                try:
-                    error_data = create_resp.json()
-                    error_detail = error_data.get('detail', error_data.get('message', 'Erro desconhecido.'))
-                except:
-                    error_detail = create_resp.text[:150]
-                
-                print(f"ERRO TORBOX (DEBUG DETALHADO): Status 400. Detalhe da Resposta do Torbox: {error_detail}")
-                return None
-            
-            create_resp.raise_for_status() 
-            
-            # --- Continuação da Lógica ---
-            
+            create_resp = await client.post(f"{BASE_URL}/api/torrents/createtorrent", json=payload, headers=headers)
             create_data = create_resp.json()
             
             if not create_data.get("success"):
-                print(f"ERRO TORBOX (Criar/Cache): Falha no campo success. Mensagem: {create_data.get('message', 'Erro desconhecido no JSON')}")
+                print(f"ERRO TORBOX: Falha ao criar/checar torrent: {create_data.get('message', 'Erro desconhecido')}")
                 return None
                 
             torrent_id = create_data["data"]["torrent_id"]
             
-            # 2. Verificar Status e Arquivos (idem)
-            info_resp = await client.get(f"{BASE_URL}/api/torrents/mylist?id={torrent_id}", headers=headers, timeout=5)
+            # 2. Verificar Status e Arquivos
+            # Usando /mylist com o ID para obter detalhes do arquivo
+            info_resp = await client.get(f"{BASE_URL}/api/torrents/mylist?id={torrent_id}", headers=headers)
             info_data = info_resp.json()
             
+            if not info_data.get("success") or not info_data["data"].get("files"):
+                 print("ERRO TORBOX: Não foi possível obter detalhes do torrent ou nenhum arquivo listado.")
+                 return None
+            
             files = info_data["data"]["files"]
-            if not files:
-                print("ERRO TORBOX: Nenhum arquivo encontrado no torrent resolvido.")
+            
+            # 💡 Correção de Seleção de Arquivo: Filtrar apenas arquivos de vídeo válidos
+            video_extensions = ('.mkv', '.mp4', '.avi', '.webm')
+            
+            # Filtra arquivos que NÃO são samples e que têm extensão de vídeo
+            video_files = [
+                f for f in files 
+                if f['path'].lower().endswith(video_extensions) and 'sample' not in f['path'].lower()
+            ]
+            
+            if not video_files:
+                print("ERRO TORBOX: Nenhum arquivo de vídeo principal encontrado após filtro.")
                 return None
-                
-            # Pega o maior arquivo de vídeo
-            best_file = max(files, key=lambda x: x['size'])
+            
+            # Escolhe o maior arquivo de vídeo após a filtragem (que deve ser o filme/episódio)
+            best_file = max(video_files, key=lambda x: x['size'])
             
             # 3. Gerar Link de Download
-            link_resp = await client.get(
-                f"{BASE_URL}/api/torrents/requestdl?token={api_key}&torrent_id={torrent_id}&file_id={best_file['id']}&zip_link=false", 
-                headers=headers, timeout=5
-            )
+            print(f"DEBUG: Arquivo escolhido: {best_file['path']}")
             
-            link_resp.raise_for_status() 
+            link_resp = await client.get(
+                f"{BASE_URL}/api/torrents/requestdl?token={api_key}&torrent_id={torrent_id}&file_id={best_file['id']}&zip_link=false",
+                headers=headers
+            )
             link_data = link_resp.json()
             
             if link_data.get("success"):
                 return link_data["data"]
             
-            print(f"ERRO TORBOX (Gerar Link): {link_data.get('message', 'Falha desconhecida na geração do link.')}")
+            print(f"ERRO TORBOX: Falha ao obter link de download: {link_data.get('message', 'Erro desconhecido')}")
             return None
 
-        except httpx.HTTPStatusError as e:
-            print(f"ERRO TORBOX (HTTPStatus): Status {e.response.status_code}. Falha na API. Resposta: {e.response.text[:100]}")
-            return None
-        
         except Exception as e:
-            print(f"ERRO TORBOX (Geral/Conexão/Timeout): {e}")
+            print(f"ERRO CRÍTICO TORBOX: {e}")
             return None
