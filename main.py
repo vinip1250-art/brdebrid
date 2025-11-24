@@ -1,12 +1,10 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import base64
 import json
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 
-from utils.jackett import search_jackett
 from utils.torbox import resolve_torbox
+# from utils.jackett import search_jackett # Desativado para teste
 
 app = FastAPI()
 
@@ -18,12 +16,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Servir a página de configuração na raiz
-@app.get("/", response_class=HTMLResponse)
-async def config_page():
-    with open("static/config.html", "r", encoding="utf-8") as f:
-        return f.read()
-
 # Helper para decodificar a configuração
 def decode_config(config_str: str):
     try:
@@ -31,6 +23,12 @@ def decode_config(config_str: str):
         return json.loads(decoded)
     except:
         return {}
+
+@app.get("/", response_class=HTMLResponse)
+async def config_page():
+    # Assumindo que você está servindo static/config.html com o Nginx ou rota Flask/FastAPI
+    with open("static/config.html", "r", encoding="utf-8") as f:
+        return f.read()
 
 @app.get("/{config}/manifest.json")
 async def get_manifest(config: str):
@@ -47,68 +45,45 @@ async def get_manifest(config: str):
 
 @app.get("/{config}/stream/{type}/{id}.json")
 async def get_stream(config: str, type: str, id: str):
-    # 1. Decodificar as configurações do usuário
     user_settings = decode_config(config)
     
     if not user_settings.get("debrid_key"):
-        return {"streams": [{"title": "⚠️ ERRO: API Key não configurada", "url": ""}]}
+        return {"streams": [{"title": "⚠️ ERRO: API Key Debrid não configurada", "url": ""}]}
 
-    imdb_id = id.split(":")[0]
-    season = None
-    episode = None
-    if ":" in id:
-        # Lógica para tratar séries (tt123:1:1)
-        parts = id.split(":")
-        if len(parts) == 3:
-            season = parts[1]
-            episode = parts[2]
-
-    magnets_found = []
-
-    # 2. BUSCA: Jackett (Se configurado)
-    if user_settings.get("jackett_url") and user_settings.get("jackett_key"):
-        print("Buscando no Jackett do usuário...")
-        results_jackett = await search_jackett(
-            user_settings["jackett_url"],
-            user_settings["jackett_key"],
-            imdb_id,
-            type,
-            season,
-            episode
-        )
-        magnets_found.extend(results_jackett)
-
-    # 3. BUSCA: Scraper Interno (Estilo Brazuca - Opcional)
-    # Aqui você adicionaria sua lógica de scrapers fixos se quiser manter
-    # magnets_found.extend(await meus_scrapers_brasileiros(imdb_id))
+    # --- TESTE ISOLADO DO TORBOX (IGNORA JACKETT) ---
+    # Use um magnet de teste (popular para garantir que esteja em cache no Torbox)
+    TEST_MAGNET = "magnet:?xt=urn:btih:3137B75F3908851724D3D560A3F1F1E8E62294E8&dn=Filme+Teste+Cach%C3%A9" 
+    
+    magnets_found = [{
+        "title": "Filme Teste (Magnet Fixo)",
+        "magnet": TEST_MAGNET,
+        "quality": "1080p",
+        "seeds": 999
+    }]
+    # --- FIM DO TESTE ISOLADO ---
 
     if not magnets_found:
         return {"streams": []}
 
     streams = []
     
-    # 4. RESOLUÇÃO: Torbox / Debrid
-    # Processamos os magnets para verificar cache e gerar link
-    
+    # 4. RESOLUÇÃO: Torbox
     if user_settings.get("service") == "torbox":
         for magnet_obj in magnets_found:
-            # Tenta resolver. Se estiver em cache, retorna link rápido.
             link_info = await resolve_torbox(
                 magnet_obj['magnet'], 
                 user_settings["debrid_key"]
             )
             
             if link_info:
+                print(f"DEBUG SUCESSO TORBOX: Link obtido para {magnet_obj['title']}")
                 streams.append({
                     "title": f"⚡ [Torbox] {magnet_obj['quality']} - {magnet_obj['title']}",
                     "url": link_info
                 })
+            else:
+                print(f"DEBUG FALHA TORBOX: Torbox não conseguiu resolver {magnet_obj['title']}")
                 
-                # Otimização: Se achar um cached 1080p ou 4k, pode parar o loop para ser mais rápido
-                # ou continuar para listar todas opções.
-
     return {"streams": streams}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# Se você ainda tiver o '__name__ == "__main__":' no final, mantenha.
