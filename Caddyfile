@@ -1,0 +1,3 @@
+seu-dominio-aqui.com {
+    reverse_proxy addon:8000
+}
