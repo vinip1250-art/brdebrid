@@ -1,42 +1,28 @@
 import httpx
-# Importa bibliotecas para parsear strings de URL (necessário para extrair o hash)
-from urllib.parse import parse_qs, urlparse 
 
 BASE_URL = "https://api.torbox.app/v1"
 
-# --- FUNÇÃO HELPER PARA EXTRAIR O HASH BTIH ---
-def extract_btih_hash(magnet_uri):
-    """Extrai o hash BTIH de um magnet link."""
-    if magnet_uri and magnet_uri.startswith('magnet:'):
-        query = urlparse(magnet_uri).query
-        params = parse_qs(query)
-        if 'xt' in params:
-            # Busca o valor 'urn:btih:HASH'
-            for xt_value in params['xt']:
-                if xt_value.startswith('urn:btih:'):
-                    # Retorna apenas o hash (o que a API do Torbox espera)
-                    return xt_value.split(':')[-1]
-    # Se falhar ou não for um magnet, retorna a string original
-    return magnet_uri 
-
-
+# A função de extração de hash foi removida. O magnet é usado como string completa.
 async def resolve_torbox(magnet, api_key):
     async with httpx.AsyncClient() as client:
-        # Padrão de autenticação: Bearer Token
         headers = {"Authorization": f"Bearer {api_key}"}
 
         try:
-            # EXTRAÇÃO DO HASH CRÍTICA
-            torrent_hash = extract_btih_hash(magnet)
+            # 1. Criar Torrent (Verifica cache). Payload com a URL Magnet completa.
+            payload = {"magnet": magnet, "seed": 1, "allow_zip": False}
             
-            # 1. Criar Torrent (Verifica cache). O payload agora usa o hash BTIH.
-            payload = {"magnet": torrent_hash, "seed": 1, "allow_zip": False}
+            # --- CORREÇÃO CRÍTICA: USAR 'data=' AO INVÉS DE 'json=' ---
+            # O Torbox rejeita o formato JSON e exige form-data.
+            print(f"DEBUG TORBOX MAGNET: Enviando payload como form-data. Magnet: {magnet[:50]}...") 
             
-            print(f"DEBUG TORBOX HASH: Hash extraído e enviado: {torrent_hash}")
-
-            create_resp = await client.post(f"{BASE_URL}/api/torrents/createtorrent", json=payload, headers=headers, timeout=10)
+            create_resp = await client.post(
+                f"{BASE_URL}/api/torrents/createtorrent", 
+                data=payload, # <--- AQUI ESTÁ A CORREÇÃO
+                headers=headers, 
+                timeout=10
+            )
             
-            # --- TRATAMENTO DO ERRO 400 (O Torbox deve aceitar o hash agora) ---
+            # --- TRATAMENTO DO ERRO 400 ---
             if create_resp.status_code == 400:
                 try:
                     error_data = create_resp.json()
@@ -47,9 +33,9 @@ async def resolve_torbox(magnet, api_key):
                 print(f"ERRO TORBOX (DEBUG DETALHADO): Status 400. Detalhe da Resposta do Torbox: {error_detail}")
                 return None
             
-            create_resp.raise_for_status() # Lança erro para 4xx/5xx que não sejam 400
+            create_resp.raise_for_status() 
             
-            # --- Continuação da Lógica (Se a requisição inicial foi 2xx) ---
+            # --- Continuação da Lógica ---
             
             create_data = create_resp.json()
             
@@ -59,7 +45,7 @@ async def resolve_torbox(magnet, api_key):
                 
             torrent_id = create_data["data"]["torrent_id"]
             
-            # 2. Verificar Status e Arquivos
+            # 2. Verificar Status e Arquivos (idem)
             info_resp = await client.get(f"{BASE_URL}/api/torrents/mylist?id={torrent_id}", headers=headers, timeout=5)
             info_data = info_resp.json()
             
@@ -87,11 +73,9 @@ async def resolve_torbox(magnet, api_key):
             return None
 
         except httpx.HTTPStatusError as e:
-            # Captura 401, 403, 404, 500 etc. que não foram 400
             print(f"ERRO TORBOX (HTTPStatus): Status {e.response.status_code}. Falha na API. Resposta: {e.response.text[:100]}")
             return None
         
         except Exception as e:
-            # Captura erro de conexão, timeout, ou JSON inválido
             print(f"ERRO TORBOX (Geral/Conexão/Timeout): {e}")
             return None
