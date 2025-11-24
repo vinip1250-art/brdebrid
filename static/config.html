@@ -5,7 +5,7 @@
     <style>
         body { font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #111; color: #eee; }
         input, select { width: 100%; padding: 10px; margin: 10px 0; background: #222; color: #fff; border: 1px solid #444; }
-        button { background: #6f42c1; color: white; padding: 15px; border: none; width: 100%; cursor: pointer; font-size: 16px; }
+        button { background: #6f42c1; color: white; padding: 15px; border: none; width: 100%; cursor: pointer; font-size: 16px; margin-top: 10px; }
         .section { background: #1a1a1a; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
     </style>
 </head>
@@ -37,25 +37,27 @@
     </div>
 
     <script>
-        // Funções JavaScript unificadas e corrigidas
-        
         function install() {
             // 1. Coletar Configurações
             const config = {
                 service: document.getElementById('debrid_service').value,
-                debrid_key: document.getElementById('debrid_apikey').value.trim(), // Trim para remover espaços em branco
+                debrid_key: document.getElementById('debrid_apikey').value.trim(),
                 jackett_url: document.getElementById('jackett_url').value.trim(),
                 jackett_key: document.getElementById('jackett_key').value.trim()
             };
+
+            // Validação simples
+            if (!config.debrid_key) {
+                alert("Por favor, insira a API Key do seu Provedor de Debrid.");
+                return;
+            }
 
             // 2. Codificar para Base64
             const jsonConfig = JSON.stringify(config);
             const b64Config = btoa(jsonConfig); 
 
             const host = window.location.host;
-            // Manifest URL (HTTPS é importante para que o link de cópia funcione)
             const fullManifestURL = `https://${host}/${b64Config}/manifest.json`;
-            // Link de instalação (usa o protocolo Stremio)
             const installLink = `stremio://service/${host}/${b64Config}/manifest.json`;
 
             // 3. Exibir o link para cópia manual
@@ -69,13 +71,12 @@
         function copyLink() {
             const linkField = document.getElementById('manifest_link');
             
-            // Verifica se o browser suporta o método moderno de cópia (navigator.clipboard)
+            // Método moderno de cópia
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(linkField.value).then(() => {
                     alert("Link do Manifest copiado para a área de transferência!");
                 }).catch(err => {
                     // Fallback se houver erro
-                    console.error('Erro ao copiar usando navigator.clipboard:', err);
                     fallbackCopy(linkField);
                 });
             } else {
@@ -86,12 +87,11 @@
 
         function fallbackCopy(linkField) {
             linkField.select(); 
-            linkField.setSelectionRange(0, 99999); // Para mobile
+            linkField.setSelectionRange(0, 99999); 
             try {
                 document.execCommand("copy"); 
                 alert("Link do Manifest copiado para a área de transferência!");
             } catch (err) {
-                console.error('Erro ao copiar usando document.execCommand:', err);
                 alert("Erro ao copiar o link. Por favor, copie manualmente.");
             }
         }
