@@ -24,27 +24,20 @@ async def scrape_brazuca_torrents(imdb_id: str, content_type: str, s: str, e: st
             resp = await client.get(brazuca_stream_url)
             
             if resp.status_code == 404:
-                 print("ERRO SCRAPER: Brazuca Torrents retornou 404. Item não encontrado.")
                  return []
-            
-            # Garante que qualquer erro HTTP seja levantado (5xx)
             resp.raise_for_status() 
 
-            # 💡 PASSO CRÍTICO DE DEBUG: Imprimir o JSON recebido
-            # Isso vai mostrar se o httpx está pegando o JSON que você vê no navegador
-            print(f"DEBUG SCRAPER: JSON Recebido do Brazuca: {resp.text[:200]}...")
-            
             data = resp.json()
             
-            # Verifica se a chave 'streams' existe e é uma lista
-            if not isinstance(data.get("streams"), list):
-                print("ERRO SCRAPER: Resposta do Brazuca não tem a chave 'streams' ou não é uma lista.")
-                return []
-            
-            # Itera sobre os streams
-            for stream in data.get("streams"):
-                url = stream.get("url")
-                title = stream.get("title", "Magnet Brazuca")
+            # 💡 Correção: Garantir que a chave 'streams' seja tratada corretamente
+            for stream in data.get("streams", []):
+                
+                # O magnet DEVE estar na chave 'url' para que o debrid funcione.
+                # Se o Brazuca Torrents usa outra chave (como 'magnet'), precisamos mapear.
+                
+                # Priorizamos 'url', mas se 'url' não for um magnet, procuramos em 'magnet'
+                url = stream.get("url", stream.get("magnet")) 
+                title = stream.get("title", stream.get("name", "Magnet Brazuca"))
                 
                 if url and url.startswith("magnet:"):
                     quality_match = re.search(r'(\d{3,4}p|4K)', title, re.IGNORECASE)
@@ -52,19 +45,17 @@ async def scrape_brazuca_torrents(imdb_id: str, content_type: str, s: str, e: st
                     
                     magnets.append({
                         "title": title,
-                        "magnet": url,
+                        "magnet": url, # Usamos 'url' que contem o magnet link
                         "quality": quality,
                         "seeds": 1 
                     })
             
-            print(f"DEBUG SCRAPER: Brazuca Torrents API encontrou {len(magnets)} resultados.")
             return magnets
         
         except httpx.RequestError as e:
             print(f"ERRO CRÍTICO NO SCRAPER BRAZUCA (Rede/Timeout): {e}")
             return []
         except Exception as e:
-            # Isso capturaria erros de JSON (mal formatado) ou KeyError
             print(f"ERRO CRÍTICO NO SCRAPER BRAZUCA (Geral - Falha ao processar JSON): {e}")
             return []
 
