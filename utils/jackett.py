@@ -22,7 +22,7 @@ async def search_jackett(url, api_key, imdb_id, type, season=None, episode=None)
 
     async with httpx.AsyncClient() as client:
     try:
-        resp = await client.get(endpoint, params=params, timeout=10)
+        resp = await client.get(endpoint, params=params, timeout=60)
         resp.raise_for_status() # Garante que erros 4xx/5xx sejam registrados
         data = resp.json()
         
