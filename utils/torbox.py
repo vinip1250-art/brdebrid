@@ -1,16 +1,50 @@
+import httpx
+
+BASE_URL = "https://api.torbox.app/v1"
+
 async def resolve_torbox(magnet, api_key):
     async with httpx.AsyncClient() as client:
         headers = {"Authorization": f"Bearer {api_key}"}
 
-        # 1. Criar Torrent (Isso no Torbox checa o cache automaticamente)
-        try: # <--- Início do try
+        try:
+            # 1. Criar Torrent (Verifica cache)
             payload = {"magnet": magnet, "seed": 1, "allow_zip": False}
-            create_resp = await client.post(f"{BASE_URL}/api/torrents/createtorrent", json=payload, headers=headers)
-        create_data = create_resp.json() # <--- ERRO: Fora do bloco try! Se a requisição falhar (create_resp), esta linha trava.
+            create_resp = await client.post(f"{BASE_URL}/api/torrents/createtorrent", json=payload, headers=headers, timeout=10)
+            create_data = create_resp.json()
+            
+            if not create_data.get("success"):
+                # LOG DE FALHA NA RESOLUÇÃO TORBOX:
+                print(f"ERRO TORBOX (Criar/Cache): Falha na API: {create_data.get('message', 'Erro desconhecido')}")
+                return None
+                
+            torrent_id = create_data["data"]["torrent_id"]
+            
+            # 2. Verificar Status e Arquivos
+            # Geralmente é um GET simples, mas vamos garantir o timeout
+            info_resp = await client.get(f"{BASE_URL}/api/torrents/mylist?id={torrent_id}", headers=headers, timeout=5)
+            info_data = info_resp.json()
+            
+            files = info_data["data"]["files"]
+            if not files:
+                print("ERRO TORBOX: Nenhum arquivo encontrado no torrent resolvido.")
+                return None
+                
+            # Lógica simples: Pega o maior arquivo de vídeo
+            best_file = max(files, key=lambda x: x['size'])
+            
+            # 3. Gerar Link de Download
+            link_resp = await client.get(
+                f"{BASE_URL}/api/torrents/requestdl?token={api_key}&torrent_id={torrent_id}&file_id={best_file['id']}&zip_link=false", 
+                headers=headers, timeout=5
+            )
+            link_data = link_resp.json()
+            
+            if link_data.get("success"):
+                return link_data["data"]
+            
+            print(f"ERRO TORBOX (Gerar Link): {link_data.get('message', 'Falha desconhecida na geração do link.')}")
+            return None
 
-        # ... todo o restante do código (torrent_id, info_resp, link_resp)
-        # ... está dentro da chave 'try', mas fora do escopo após a falha da primeira linha.
-        
         except Exception as e:
-            print(f"Erro Torbox: {e}")
-            return None # <--- Este bloco except só pega erros na criação do payload.
+            print(f"ERRO TORBOX (Geral/Conexão): {e}")
+            return None
