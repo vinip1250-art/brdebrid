@@ -4,54 +4,52 @@ import urllib.parse
 async def search_jackett(url, api_key, imdb_id, content_type, season=None, episode=None):
     """
     Busca por torrents no Jackett usando o ID IMDB.
-    Filtra por tipo (Filme/Série) e, se série, por temporada e episódio.
+    Ajusta os parâmetros para garantir que a busca por séries seja precisa.
     """
     
-    # Garantir que a URL base termine sem barra
     clean_url = url.rstrip("/")
     endpoint = f"{clean_url}/api/v2.0/indexers/all/results"
     
-    # Parâmetros de busca
+    # Parâmetros de busca (imdbid é o mais confiável)
     params = {
         "apikey": api_key,
         "imdbid": imdb_id, 
-        "t": "search" # Tipo de consulta (geralmente não é necessário, mas garante)
+        "t": "search" 
     }
     
-    # Categorias Jackett
-    # 2000: Movies (Filmes)
-    # 5000: TV (Séries)
+    # 1. Categorias Jackett e Parâmetros de Série
     if content_type == "movie":
-        params["Category[]"] = 2000
+        params["Category[]"] = 2000 # Filmes
     elif content_type == "series":
-        params["Category[]"] = 5000
+        params["Category[]"] = 5000 # Séries/TV
+        
+        # 💡 CORREÇÃO CRÍTICA: O Jackett espera parâmetros s e ep para busca específica.
         if season and episode:
-            # Para séries, o Jackett aceita os parâmetros de temporada (s) e episódio (ep)
-            params["season"] = season
-            params["ep"] = episode
+            # Garante que temporada e episódio sejam strings e tratados (embora Jackett seja flexível)
+            params["season"] = str(season)
+            params["ep"] = str(episode)
+            
+            # ⚠️ Debugging Tip: Se estiver falhando, tente usar 'q' (query) em vez de 'imdbid'
+            # params["q"] = f"S{str(season).zfill(2)}E{str(episode).zfill(2)}"
+            
     
-    # Usar httpx.AsyncClient para consultas assíncronas
-    async with httpx.AsyncClient(timeout=1500.0) as client:
+    async with httpx.AsyncClient(timeout=150.0) as client:
         try:
-            # O Jackett pode retornar um XML ou JSON. Pedimos JSON.
             resp = await client.get(endpoint, params=params, headers={"Accept": "application/json"})
-            resp.raise_for_status() # Lança exceção para status 4xx/5xx
+            resp.raise_for_status() 
             
             data = resp.json()
             
             results = []
             for item in data.get("Results", []):
-                # Filtra apenas o que tem Magnet Link e que não são Links para página
                 if item.get("MagnetUri") and item.get("Link"):
                     results.append({
                         "title": item.get("Title"),
                         "magnet": item.get("MagnetUri"),
-                        # Adiciona metadados úteis
-                        "quality": "UNK", # Poderia tentar extrair 720p/1080p do título
+                        "quality": "UNK", 
                         "seeds": item.get("Seeders", 0)
                     })
             
-            # Otimização: Classificar por Seeds para priorizar resultados mais saudáveis
             results.sort(key=lambda x: x['seeds'], reverse=True)
             
             print(f"DEBUG: Jackett encontrou {len(results)} resultados.")
@@ -63,3 +61,4 @@ async def search_jackett(url, api_key, imdb_id, content_type, season=None, episo
         except Exception as e:
             print(f"ERRO JACKETT: Erro ao processar resposta: {e}")
             return []
+
