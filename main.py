@@ -1,147 +1,90 @@
+# --- main.py (Trecho Atualizado) ---
+
 import base64
 import json
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
+# ... outros imports ...
 
-# Importa os utilitários
 from utils.torbox import resolve_torbox
-from utils.jackett import search_jackett # Novo
+from utils.jackett import search_jackett 
+from utils.realdebrid import resolve_realdebrid # 💡 NOVO: Importa o resolvedor Real-Debrid
 
-app = FastAPI()
+# ... (Funções decode_config, config_page e manifest) ...
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Servir a página de configuração e estáticos
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-def decode_config(config_str: str):
-    """Decodifica a string Base64 da URL em um dicionário de configurações."""
-    try:
-        decoded = base64.b64decode(config_str).decode("utf-8")
-        return json.loads(decoded)
-    except Exception as e:
-        print(f"Erro ao decodificar config: {e}")
-        return {}
-
-# --- Lógica de Busca ---
-
+# 💡 PONTO DE INSERÇÃO: SUA LÓGICA DE BUSCA DO BRAZUCA TORRENTS
 async def meu_scraper(imdb_id: str, type: str, s: str, e: str):
     """
-    ⚠️ SUBSTITUA PELA SUA LÓGICA DE SCRAPING DE SITES BRASILEIROS (Ex: Brazuca Torrents).
+    Substitua o conteúdo desta função para buscar resultados no Brazuca Torrents.
     
-    Por enquanto, retorna uma lista vazia ou um magnet de teste (se quiser habilitar).
+    Se você não a substituir, a busca será VAZIA (exceto para o teste da Matrix).
     """
-    # Exemplo: Se você implementar o scraper do Brazuca Torrents, ele entraria aqui
-    # results = await scrape_brazuca(imdb_id, type, s, e)
     
     # 📌 Placeholder para Magnet de Teste (Remova após implementar o scraper)
     if imdb_id == "tt0133093": 
         return [{
-            "title": "Matrix 1080p Web-DL (TESTE)", 
+            "title": "Matrix 1080p Web-DL (TESTE SCRAPER BR)", 
             "magnet": "magnet:?xt=urn:btih:EXEMPLO_HASH_DO_TORRENT_DA_MATRIX&dn=The.Matrix.1999.1080p.Web-DL", 
             "quality": "1080p", 
             "seeds": 1000
         }]
     
-    return []
-
-
-@app.get("/", response_class=HTMLResponse)
-async def config_page():
-    try:
-        with open("static/config.html", "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        return "Página de configuração não encontrada. Rode 'python -m http.server' na pasta static para testar.", 404
-
-@app.get("/{config}/manifest.json")
-async def get_manifest(config: str):
-    return {
-        "id": "com.brazucamod.public",
-        "version": "1.0.3",
-        "name": "Brazuca Mod (Torbox/Jackett)",
-        "description": "Addon configurável com busca em Jackett e Debrids.",
-        "resources": ["stream"],
-        "types": ["movie", "series"],
-        "catalogs": [],
-        "idPrefixes": ["tt"]
-    }
+    return [] 
 
 @app.get("/{config}/stream/{type}/{id}.json")
 async def get_stream(config: str, type: str, id: str):
     user_settings = decode_config(config)
     
-    # 1. Configurações e ID Parsing
+    # ... parsing de IDs ...
     debrid_key = user_settings.get("debrid_key")
-    if not debrid_key:
-        return {"streams": [{"title": "⚠️ ERRO: API Key não configurada", "url": ""}]}
     
-    imdb_id = id.split(":")[0]
-    season, episode = (id.split(":")[1], id.split(":")[2]) if type == "series" and ":" in id else (None, None)
-
+    # 2. BUSCA: Fontes Múltiplas (Jackett + Scraper BR)
     magnets_found = []
 
-    # 2. BUSCA: Fontes Múltiplas
-    
-    # 2.1 Jackett (Se configurado)
+    # 2.1 Jackett
     if user_settings.get("jackett_url") and user_settings.get("jackett_key"):
-        print("DEBUG: Buscando no Jackett do usuário...")
         results_jackett = await search_jackett(
-            user_settings["jackett_url"],
-            user_settings["jackett_key"],
-            imdb_id,
-            type,
-            season,
-            episode
+            user_settings["jackett_url"], user_settings["jackett_key"], imdb_id, type, season, episode
         )
         magnets_found.extend(results_jackett)
         
-    # 2.2 Scraper Interno (Substitua esta chamada pela sua lógica de busca no Brazuca)
+    # 2.2 Scraper Interno (Brazuca Torrents)
     results_scraper = await meu_scraper(imdb_id, type, season, episode)
     magnets_found.extend(results_scraper)
     
-    # 3. Processamento de Resultados
     if not magnets_found:
-        print(f"DEBUG: Nenhuma fonte (Jackett/Scraper) encontrou resultados para IMDB ID {imdb_id}.")
         return {"streams": []}
         
-    # Otimização: Classificar por seeds e qualidade (Melhor magnet primeiro)
+    # 3. Classificação
     magnets_found.sort(key=lambda x: x['seeds'], reverse=True)
     
     streams = []
+    service = user_settings.get("service")
     
-    # 4. RESOLUÇÃO: Torbox (Você pode adicionar Real-Debrid aqui com uma função similar)
-    if user_settings.get("service") == "torbox":
-        for magnet_obj in magnets_found:
-            print(f"DEBUG: Tentando resolver magnet Torbox: {magnet_obj['title']}")
+    # 4. RESOLUÇÃO: Torbox ou Real-Debrid
+    for magnet_obj in magnets_found:
+        link_info = None
+        
+        if service == "torbox":
+            # Tenta resolver via Torbox
+            link_info = await resolve_torbox(magnet_obj['magnet'], debrid_key)
+            service_name = "Torbox"
             
-            link_info = await resolve_torbox(
-                magnet_obj['magnet'], 
-                debrid_key
-            )
-            
-            if link_info:
-                # 📌 STREAMTHRU: A integração final do Streamthru entraria aqui
-                # final_url = wrap_streamthru(link_info) 
-                
-                streams.append({
-                    "title": f"⚡ [Torbox] {magnet_obj['quality']} - {magnet_obj['title']}",
-                    "url": link_info
-                })
-                # Não pare aqui se quiser listar várias opções, mas é mais rápido parar.
-                # break 
+        elif service == "realdebrid":
+            # Tenta resolver via Real-Debrid
+            link_info = await resolve_realdebrid(magnet_obj['magnet'], debrid_key)
+            service_name = "Real-Debrid"
 
+        # Se a resolução foi bem-sucedida
+        if link_info:
+            # 📌 O Streamthru entraria aqui, se configurado
+            # final_url = wrap_streamthru(link_info) 
+            
+            streams.append({
+                "title": f"⚡ [{service_name}] {magnet_obj['quality']} - {magnet_obj['title']}",
+                "url": link_info
+            })
+            
+            # Se quiser listar apenas a melhor opção, use 'break' aqui.
+            # break 
+            
     return {"streams": streams}
-
-if __name__ == "__main__":
-    import uvicorn
-    # Não esqueça que para uso externo, você precisa de um proxy/serviço que use HTTPS.
-    uvicorn.run(app, host="0.0.0.0", port=8000)
