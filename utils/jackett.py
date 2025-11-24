@@ -31,7 +31,7 @@ async def search_jackett(url, api_key, imdb_id, content_type, season=None, episo
             params["ep"] = episode
     
     # Usar httpx.AsyncClient para consultas assíncronas
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=1500.0) as client:
         try:
             # O Jackett pode retornar um XML ou JSON. Pedimos JSON.
             resp = await client.get(endpoint, params=params, headers={"Accept": "application/json"})
