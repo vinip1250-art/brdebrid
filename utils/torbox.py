@@ -10,10 +10,12 @@ async def resolve_torbox(magnet, api_key):
         try:
             payload = {"magnet": magnet, "seed": 1, "allow_zip": False}
             create_resp = await client.post(f"{BASE_URL}/api/torrents/createtorrent", json=payload, headers=headers)
-            create_data = create_resp.json()
-            
-            if not create_data.get("success"):
-                return None
+        create_data = create_resp.json()
+        
+        if not create_data.get("success"):
+            # LOG DE FALHA NA RESOLUÇÃO TORBOX:
+            print(f"ERRO TORBOX (Criar/Cache): Falha na API: {create_data.get('message', 'Erro desconhecido')}")
+            return None
                 
             torrent_id = create_data["data"]["torrent_id"]
             
