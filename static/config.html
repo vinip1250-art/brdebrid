@@ -5,6 +5,7 @@
     <style>
         body { font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #111; color: #eee; }
         input, select { width: 100%; padding: 10px; margin: 10px 0; background: #222; color: #fff; border: 1px solid #444; }
+        /* Ajuste a margem superior do botão para separá-lo do campo de cópia, se houver */
         button { background: #6f42c1; color: white; padding: 15px; border: none; width: 100%; cursor: pointer; font-size: 16px; margin-top: 10px; }
         .section { background: #1a1a1a; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
     </style>
@@ -38,7 +39,6 @@
 
     <script>
         function install() {
-            // 1. Coletar Configurações
             const config = {
                 service: document.getElementById('debrid_service').value,
                 debrid_key: document.getElementById('debrid_apikey').value.trim(),
@@ -46,13 +46,11 @@
                 jackett_key: document.getElementById('jackett_key').value.trim()
             };
 
-            // Validação simples
             if (!config.debrid_key) {
                 alert("Por favor, insira a API Key do seu Provedor de Debrid.");
                 return;
             }
 
-            // 2. Codificar para Base64
             const jsonConfig = JSON.stringify(config);
             const b64Config = btoa(jsonConfig); 
 
@@ -60,39 +58,31 @@
             const fullManifestURL = `https://${host}/${b64Config}/manifest.json`;
             const installLink = `stremio://service/${host}/${b64Config}/manifest.json`;
 
-            // 3. Exibir o link para cópia manual
+            // 1. Exibir o link para cópia manual
             document.getElementById('manifest_link').value = fullManifestURL;
             document.getElementById('link-section').style.display = 'block';
 
-            // 4. Tentar a instalação automática
+            // 2. Tentar a instalação automática (protocolo Stremio)
             window.location.href = installLink;
         }
 
         function copyLink() {
             const linkField = document.getElementById('manifest_link');
             
-            // Método moderno de cópia
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(linkField.value).then(() => {
                     alert("Link do Manifest copiado para a área de transferência!");
-                }).catch(err => {
-                    // Fallback se houver erro
-                    fallbackCopy(linkField);
                 });
             } else {
-                // Fallback para navegadores mais antigos
-                fallbackCopy(linkField);
-            }
-        }
-
-        function fallbackCopy(linkField) {
-            linkField.select(); 
-            linkField.setSelectionRange(0, 99999); 
-            try {
-                document.execCommand("copy"); 
-                alert("Link do Manifest copiado para a área de transferência!");
-            } catch (err) {
-                alert("Erro ao copiar o link. Por favor, copie manualmente.");
+                // Fallback
+                linkField.select(); 
+                linkField.setSelectionRange(0, 99999); 
+                try {
+                    document.execCommand("copy"); 
+                    alert("Link do Manifest copiado para a área de transferência!");
+                } catch (err) {
+                    alert("Erro ao copiar o link. Por favor, copie manualmente.");
+                }
             }
         }
     </script>
