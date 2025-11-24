@@ -4,23 +4,9 @@ async def search_jackett(url, api_key, imdb_id, type, season=None, episode=None)
     clean_url = url.rstrip("/")
     endpoint = f"{clean_url}/api/v2.0/indexers/all/results"
     
-    # Parâmetros de busca
-    params = {
-        "apikey": api_key,
-        "imdbid": imdb_id,
-    }
+    # Parâmetros de busca (idem)
+    # ...
     
-    if type == "series" and season and episode:
-        params["season"] = season
-        params["ep"] = episode
-    
-    # Categoria 2000 (Movies), 5000 (TV)
-    if type == "movie":
-        params["Category[]"] = 2000
-    else:
-        params["Category[]"] = 5000
-
-    # O bloco try/except DEVE estar dentro do 'async with'
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(endpoint, params=params, timeout=60)
@@ -30,7 +16,7 @@ async def search_jackett(url, api_key, imdb_id, type, season=None, episode=None)
             # LOG DE RESULTADOS:
             print(f"DEBUG JACKETT: Encontrados {len(data.get('Results', []))} resultados no Jackett.")
             
-            # LOGIC: Processamento dos resultados (faltante na amostra, mas assumido)
+            # Lógica de processamento dos resultados
             results = []
             for item in data.get("Results", []):
                 if item.get("MagnetUri"):
