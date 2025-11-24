@@ -8,22 +8,14 @@ BRAZUCA_ADDON_BASE_URL = "https://94c8cb9f702d-brazuca-torrents.baby-beamup.club
 async def scrape_brazuca_torrents(imdb_id: str, content_type: str, s: str, e: str):
     """
     Busca por magnets no Brazuca Torrents usando o próprio addon como API (API Chaining).
-    Esta é a lógica do brazuca-rd.
     """
     
-    # 1. Constrói o ID da requisição do Stremio
     if content_type == "series" and s and e:
-        # Formato: tt12345:1:5 (IMDB ID:Temporada:Episódio)
         stremio_id = f"{imdb_id}:{s}:{e}"
     else:
-        # Formato: tt12345
         stremio_id = imdb_id
         
-    # 2. Constrói a URL de Stream do Brazuca Torrents
-    # Ex: https://.../stream/movie/tt12345.json
     brazuca_stream_url = f"{BRAZUCA_ADDON_BASE_URL}/stream/{content_type}/{stremio_id}.json"
-    
-    print(f"DEBUG SCRAPER: Chamando Brazuca Torrents API: {brazuca_stream_url}")
     
     magnets = []
     
@@ -31,21 +23,30 @@ async def scrape_brazuca_torrents(imdb_id: str, content_type: str, s: str, e: st
         try:
             resp = await client.get(brazuca_stream_url)
             
-            # Se a resposta não for 200 (OK), trata a falha
             if resp.status_code == 404:
                  print("ERRO SCRAPER: Brazuca Torrents retornou 404. Item não encontrado.")
                  return []
-            resp.raise_for_status() # Lança exceção para outros status de erro
+            
+            # Garante que qualquer erro HTTP seja levantado (5xx)
+            resp.raise_for_status() 
+
+            # 💡 PASSO CRÍTICO DE DEBUG: Imprimir o JSON recebido
+            # Isso vai mostrar se o httpx está pegando o JSON que você vê no navegador
+            print(f"DEBUG SCRAPER: JSON Recebido do Brazuca: {resp.text[:200]}...")
             
             data = resp.json()
             
-            # 3. Processa a resposta do Brazuca Torrents
-            for stream in data.get("streams", []):
+            # Verifica se a chave 'streams' existe e é uma lista
+            if not isinstance(data.get("streams"), list):
+                print("ERRO SCRAPER: Resposta do Brazuca não tem a chave 'streams' ou não é uma lista.")
+                return []
+            
+            # Itera sobre os streams
+            for stream in data.get("streams"):
                 url = stream.get("url")
                 title = stream.get("title", "Magnet Brazuca")
                 
                 if url and url.startswith("magnet:"):
-                    # Tenta extrair a qualidade (720p, 1080p, 4K) do título
                     quality_match = re.search(r'(\d{3,4}p|4K)', title, re.IGNORECASE)
                     quality = quality_match.group(1) if quality_match else "UNK"
                     
@@ -53,18 +54,17 @@ async def scrape_brazuca_torrents(imdb_id: str, content_type: str, s: str, e: st
                         "title": title,
                         "magnet": url,
                         "quality": quality,
-                        "seeds": 1 # O Brazuca Torrents não retorna sementes
+                        "seeds": 1 
                     })
             
             print(f"DEBUG SCRAPER: Brazuca Torrents API encontrou {len(magnets)} resultados.")
             return magnets
         
         except httpx.RequestError as e:
-            # Captura erros de rede, DNS ou Timeout
             print(f"ERRO CRÍTICO NO SCRAPER BRAZUCA (Rede/Timeout): {e}")
             return []
         except Exception as e:
-            # Captura erros de JSON ou processamento
-            print(f"ERRO CRÍTICO NO SCRAPER BRAZUCA (Geral): {e}")
+            # Isso capturaria erros de JSON (mal formatado) ou KeyError
+            print(f"ERRO CRÍTICO NO SCRAPER BRAZUCA (Geral - Falha ao processar JSON): {e}")
             return []
 
