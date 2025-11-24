@@ -1,21 +1,16 @@
-# Usa uma imagem Python leve e oficial
 FROM python:3.10-slim
 
-# Define o diretório de trabalho dentro do container
 WORKDIR /app
 
-# Copia o arquivo de dependências primeiro (para otimizar o cache do Docker)
+# Copia e instala dependências
 COPY requirements.txt .
-
-# Instala as dependências
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia todo o restante do código para dentro do container
+# Copia o código
 COPY . .
 
-# Expõe a porta que o FastAPI usa
+# Expõe a porta interna
 EXPOSE 8000
 
-# Comando para rodar o servidor
-# main:app refere-se ao arquivo main.py e a variável app = FastAPI()
+# Roda o servidor
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
