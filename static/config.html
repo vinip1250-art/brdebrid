@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Configurar Meu Brazuca Mod</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #111; color: #eee; }
+        input, select { width: 100%; padding: 10px; margin: 10px 0; background: #222; color: #fff; border: 1px solid #444; }
+        button { background: #6f42c1; color: white; padding: 15px; border: none; width: 100%; cursor: pointer; font-size: 16px; }
+        .section { background: #1a1a1a; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <h1>Configuração do Addon</h1>
+    
+    <div class="section">
+        <h3>1. Provedor de Debrid</h3>
+        <select id="debrid_service">
+            <option value="torbox">Torbox</option>
+            <option value="realdebrid">Real Debrid</option>
+        </select>
+        <input type="text" id="debrid_apikey" placeholder="Sua API Key do Debrid">
+    </div>
+
+    <div class="section">
+        <h3>2. Jackett (Opcional)</h3>
+        <p>Use seu próprio indexador para achar mais conteúdos.</p>
+        <input type="text" id="jackett_url" placeholder="URL do Jackett (ex: http://meu-ip:9117)">
+        <input type="text" id="jackett_key" placeholder="API Key do Jackett">
+    </div>
+
+    <button onclick="install()">Instalar no Stremio</button>
+
+    <script>
+        function install() {
+            const config = {
+                service: document.getElementById('debrid_service').value,
+                debrid_key: document.getElementById('debrid_apikey').value,
+                jackett_url: document.getElementById('jackett_url').value,
+                jackett_key: document.getElementById('jackett_key').value
+            };
+
+            // Transforma o objeto JSON em string e depois em Base64
+            const jsonConfig = JSON.stringify(config);
+            const b64Config = btoa(jsonConfig); 
+
+            // Redireciona para o protocolo do Stremio
+            // O window.location.host será o seu domínio onde o python está rodando
+            const host = window.location.host; 
+            const protocol = window.location.protocol.replace('http', 'stremio'); // http -> stremio, https -> stremios
+            
+            window.location.href = `${protocol}//${host}/${b64Config}/manifest.json`;
+        }
+    </script>
+</body>
+</html>
