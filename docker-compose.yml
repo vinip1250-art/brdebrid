@@ -1,0 +1,27 @@
+services:
+  addon:
+    build: .
+    container_name: brdebrid-addon
+    restart: always
+    environment:
+      - PORT=8000
+    # Não precisamos expor portas aqui se usarmos o Caddy na mesma rede,
+    # mas se quiser testar via IP direto (http), descomente:
+    # ports:
+    #   - "8000:8000"
+
+  caddy:
+    image: caddy:latest
+    container_name: caddy-server
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
