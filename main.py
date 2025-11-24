@@ -3,11 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import base64
 import json
-import traceback # Importado para capturar e logar erros fatais
+import traceback
 
 from utils.torbox import resolve_torbox
-# A busca do Jackett continua importada, mas a chamada foi removida para o teste isolado
-# from utils.jackett import search_jackett 
+# from utils.jackett import search_jackett # Manter comentado para teste isolado
 
 app = FastAPI()
 
@@ -30,7 +29,6 @@ def decode_config(config_str: str):
 
 @app.get("/", response_class=HTMLResponse)
 async def config_page():
-    # Servir a página de configuração (static/config.html)
     with open("static/config.html", "r", encoding="utf-8") as f:
         return f.read()
 
@@ -50,15 +48,13 @@ async def get_manifest(config: str):
 @app.get("/{config}/stream/{type}/{id}.json")
 async def get_stream(config: str, type: str, id: str):
     
-    # --- NOVO BLOCO TRY/EXCEPT GLOBAL PARA PEGAR FALHAS SILENCIOSAS ---
     try:
         user_settings = decode_config(config)
         
         if not user_settings.get("debrid_key"):
             return {"streams": [{"title": "⚠️ ERRO: API Key Debrid não configurada", "url": ""}]}
 
-        # --- TESTE ISOLADO DO TORBOX (IGNORA JACKETT) ---
-        # Magnet de Teste (Popular para garantir que esteja em cache no Torbox)
+        # --- TESTE ISOLADO DO TORBOX ---
         TEST_MAGNET = "magnet:?xt=urn:btih:3137B75F3908851724D3D560A3F1F1E8E62294E8&dn=Filme+Teste+Cach%C3%A9" 
         
         magnets_found = [{
@@ -93,17 +89,14 @@ async def get_stream(config: str, type: str, id: str):
         return {"streams": streams}
     
     except Exception as e:
-        # Imprime o traceback completo para debug
         print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         print("ERRO FATAL NÃO TRATADO NA ROTA DE STREAM (VERIFIQUE TRACEBACK):")
         print(traceback.format_exc())
         print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         
-        # Retorna o erro para o Stremio, forçando a visibilidade
         return {"streams": [{"title": f"🔴 ERRO INTERNO: {e.__class__.__name__}", "url": ""}]}
 
 
 if __name__ == "__main__":
     import uvicorn
-    # Não use esta porta 8000 se você estiver usando o Nginx como proxy, mas é padrão para testes
     uvicorn.run(app, host="0.0.0.0", port=8000)
