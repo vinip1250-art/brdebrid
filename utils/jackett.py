@@ -7,7 +7,7 @@ async def search_jackett(url, api_key, imdb_id, type, season=None, episode=None)
     # Parâmetros de busca
     params = {
         "apikey": api_key,
-        "imdbid": imdb_id, # Jackett aceita busca por ID IMDB, o que é ótimo!
+        "imdbid": imdb_id,
     }
     
     if type == "series" and season and episode:
@@ -20,19 +20,32 @@ async def search_jackett(url, api_key, imdb_id, type, season=None, episode=None)
     else:
         params["Category[]"] = 5000
 
+    # O bloco try/except DEVE estar dentro do 'async with'
     async with httpx.AsyncClient() as client:
-    try:
-        resp = await client.get(endpoint, params=params, timeout=60)
-        resp.raise_for_status() # Garante que erros 4xx/5xx sejam registrados
-        data = resp.json()
-        
-        # LOG DE RESULTADOS:
-        print(f"DEBUG JACKETT: Encontrados {len(data.get('Results', []))} resultados no Jackett.") 
-        
-        # ... o restante da lógica ...
-    except httpx.HTTPStatusError as e:
-        print(f"ERRO JACKETT (HTTP): Status {e.response.status_code}. Verifique a API Key ou se o Jackett está OK.")
-        return []
-    except Exception as e:
-        print(f"ERRO JACKETT (Conexão/JSON): {e}")
-        return []
+        try:
+            resp = await client.get(endpoint, params=params, timeout=60)
+            resp.raise_for_status() # Garante que erros 4xx/5xx sejam registrados
+            data = resp.json()
+            
+            # LOG DE RESULTADOS:
+            print(f"DEBUG JACKETT: Encontrados {len(data.get('Results', []))} resultados no Jackett.")
+            
+            # LOGIC: Processamento dos resultados (faltante na amostra, mas assumido)
+            results = []
+            for item in data.get("Results", []):
+                if item.get("MagnetUri"):
+                    results.append({
+                        "title": item.get("Title"),
+                        "magnet": item.get("MagnetUri"),
+                        "quality": "UNK", 
+                        "seeds": item.get("Seeders", 0)
+                    })
+            results.sort(key=lambda x: x['seeds'], reverse=True)
+            return results
+            
+        except httpx.HTTPStatusError as e:
+            print(f"ERRO JACKETT (HTTP): Status {e.response.status_code}. Resposta: {e.response.text[:100]}")
+            return []
+        except Exception as e:
+            print(f"ERRO JACKETT (Conexão/Timeout/JSON): {e}")
+            return []
