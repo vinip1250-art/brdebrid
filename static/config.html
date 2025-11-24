@@ -30,58 +30,71 @@
 
     <button onclick="install()">Instalar no Stremio</button>
 
+    <div class="section" id="link-section" style="display: none; margin-top: 20px;">
+        <h3>3. Link do Manifest (Para cópia manual)</h3>
+        <input type="text" id="manifest_link" readonly placeholder="Gere o link acima">
+        <button onclick="copyLink()">Copiar Link</button>
+    </div>
+
     <script>
+        // Funções JavaScript unificadas e corrigidas
+        
         function install() {
+            // 1. Coletar Configurações
             const config = {
                 service: document.getElementById('debrid_service').value,
-                debrid_key: document.getElementById('debrid_apikey').value,
-                jackett_url: document.getElementById('jackett_url').value,
-                jackett_key: document.getElementById('jackett_key').value
+                debrid_key: document.getElementById('debrid_apikey').value.trim(), // Trim para remover espaços em branco
+                jackett_url: document.getElementById('jackett_url').value.trim(),
+                jackett_key: document.getElementById('jackett_key').value.trim()
             };
 
-            // Transforma o objeto JSON em string e depois em Base64
+            // 2. Codificar para Base64
             const jsonConfig = JSON.stringify(config);
             const b64Config = btoa(jsonConfig); 
 
-            // Redireciona para o protocolo do Stremio
-            // O window.location.host será o seu domínio onde o python está rodando
             const host = window.location.host;
+            // Manifest URL (HTTPS é importante para que o link de cópia funcione)
+            const fullManifestURL = `https://${host}/${b64Config}/manifest.json`;
+            // Link de instalação (usa o protocolo Stremio)
             const installLink = `stremio://service/${host}/${b64Config}/manifest.json`;
+
+            // 3. Exibir o link para cópia manual
+            document.getElementById('manifest_link').value = fullManifestURL;
+            document.getElementById('link-section').style.display = 'block';
+
+            // 4. Tentar a instalação automática
             window.location.href = installLink;
         }
+
+        function copyLink() {
+            const linkField = document.getElementById('manifest_link');
+            
+            // Verifica se o browser suporta o método moderno de cópia (navigator.clipboard)
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(linkField.value).then(() => {
+                    alert("Link do Manifest copiado para a área de transferência!");
+                }).catch(err => {
+                    // Fallback se houver erro
+                    console.error('Erro ao copiar usando navigator.clipboard:', err);
+                    fallbackCopy(linkField);
+                });
+            } else {
+                // Fallback para navegadores mais antigos
+                fallbackCopy(linkField);
+            }
+        }
+
+        function fallbackCopy(linkField) {
+            linkField.select(); 
+            linkField.setSelectionRange(0, 99999); // Para mobile
+            try {
+                document.execCommand("copy"); 
+                alert("Link do Manifest copiado para a área de transferência!");
+            } catch (err) {
+                console.error('Erro ao copiar usando document.execCommand:', err);
+                alert("Erro ao copiar o link. Por favor, copie manualmente.");
+            }
+        }
     </script>
-    <button onclick="install()">Instalar no Stremio</button>
-
-<div class="section" id="link-section" style="display: none; margin-top: 20px;">
-    <h3>3. Link do Manifest (Para cópia manual)</h3>
-    <input type="text" id="manifest_link" readonly placeholder="Gere o link acima">
-    <button onclick="copyLink()">Copiar Link</button>
-</div>
-
-<script>
-// ...
-
-function install() {
-    // ... (Lógica de configuração JSON e B64 - IGUAL A ANTERIOR) ...
-
-    const host = window.location.host; 
-    const fullManifestURL = `https://${host}/${b64Config}/manifest.json`;
-    const installLink = `stremio://service/${host}/${b64Config}/manifest.json`;
-
-    // 1. Exibir o link completo para cópia
-    document.getElementById('manifest_link').value = fullManifestURL;
-    document.getElementById('link-section').style.display = 'block';
-
-    // 2. Tentar a instalação automática (protocolo Stremio)
-    window.location.href = installLink;
-}
-
-function copyLink() {
-    const linkField = document.getElementById('manifest_link');
-    linkField.select(); // Seleciona o conteúdo
-    document.execCommand("copy"); // Executa o comando de cópia
-    alert("Link do Manifest copiado para a área de transferência!");
-}
-</script>
 </body>
 </html>
