@@ -1,50 +1,65 @@
 import httpx
+import urllib.parse
 
-async def search_jackett(url, api_key, imdb_id, type, season=None, episode=None):
+async def search_jackett(url, api_key, imdb_id, content_type, season=None, episode=None):
+    """
+    Busca por torrents no Jackett usando o ID IMDB.
+    Filtra por tipo (Filme/Série) e, se série, por temporada e episódio.
+    """
+    
+    # Garantir que a URL base termine sem barra
     clean_url = url.rstrip("/")
     endpoint = f"{clean_url}/api/v2.0/indexers/all/results"
     
     # Parâmetros de busca
     params = {
         "apikey": api_key,
-        "imdbid": imdb_id,
+        "imdbid": imdb_id, 
+        "t": "search" # Tipo de consulta (geralmente não é necessário, mas garante)
     }
     
-    if type == "series" and season and episode:
-        params["season"] = season
-        params["ep"] = episode
-    
-    # Categoria 2000 (Movies), 5000 (TV)
-    if type == "movie":
+    # Categorias Jackett
+    # 2000: Movies (Filmes)
+    # 5000: TV (Séries)
+    if content_type == "movie":
         params["Category[]"] = 2000
-    else:
+    elif content_type == "series":
         params["Category[]"] = 5000
-
-    async with httpx.AsyncClient() as client:
+        if season and episode:
+            # Para séries, o Jackett aceita os parâmetros de temporada (s) e episódio (ep)
+            params["season"] = season
+            params["ep"] = episode
+    
+    # Usar httpx.AsyncClient para consultas assíncronas
+    async with httpx.AsyncClient(timeout=15.0) as client:
         try:
-            # Timeout aumentado para dar tempo do Jackett consultar os indexadores
-            resp = await client.get(endpoint, params=params, timeout=60) 
-            resp.raise_for_status() 
-            data = resp.json()
+            # O Jackett pode retornar um XML ou JSON. Pedimos JSON.
+            resp = await client.get(endpoint, params=params, headers={"Accept": "application/json"})
+            resp.raise_for_status() # Lança exceção para status 4xx/5xx
             
-            # LOG DE RESULTADOS:
-            print(f"DEBUG JACKETT: Encontrados {len(data.get('Results', []))} resultados no Jackett.")
+            data = resp.json()
             
             results = []
             for item in data.get("Results", []):
-                if item.get("MagnetUri"):
+                # Filtra apenas o que tem Magnet Link e que não são Links para página
+                if item.get("MagnetUri") and item.get("Link"):
                     results.append({
                         "title": item.get("Title"),
                         "magnet": item.get("MagnetUri"),
-                        "quality": "UNK", 
+                        # Adiciona metadados úteis
+                        "quality": "UNK", # Poderia tentar extrair 720p/1080p do título
                         "seeds": item.get("Seeders", 0)
                     })
+            
+            # Otimização: Classificar por Seeds para priorizar resultados mais saudáveis
             results.sort(key=lambda x: x['seeds'], reverse=True)
+            
+            print(f"DEBUG: Jackett encontrou {len(results)} resultados.")
             return results
             
-        except httpx.HTTPStatusError as e:
-            print(f"ERRO JACKETT (HTTP): Status {e.response.status_code}. Verifique a API Key ou se o Jackett está OK.")
+        except httpx.RequestError as e:
+            print(f"ERRO JACKETT: Falha na conexão ou Timeout: {e}")
             return []
         except Exception as e:
-            print(f"ERRO JACKETT (Conexão/Timeout/JSON): {e}")
+            print(f"ERRO JACKETT: Erro ao processar resposta: {e}")
             return []
